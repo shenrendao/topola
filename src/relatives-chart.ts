@@ -51,6 +51,14 @@ class FilterChildData implements DataProvider<Indi, Fam> {
   getFam(id: string): Fam | null {
     return new FilterChildFam(this.data.getFam(id)!, this.childId);
   }
+
+  getIndis(): Map<string, Indi> {
+    return new Map()
+  }
+
+  getFams(): Map<string, Fam> {
+    return new Map()
+  }
 }
 
 /** Information about the subtree of descendants of an ancestor. */

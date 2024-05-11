@@ -8,82 +8,86 @@
     <!-- Run `npm run build-demo` for `bundle.js` to be built. -->
     <script src="bundle.js"></script>
     <script>
-      d3.text('data/family.ged', (gedcom) => {
+      d3.text('data/british_royals.ged', (gedcom) => {
         var json = topola.gedcomToJson(gedcom);
         topola.createChart({
           json,
           svgSelector: '#relatives',
-          chartType: topola.RelativesChart,
+          chartType: topola.DagChart,
+          // chartType: topola.DescendantChart,
           renderer: topola.DetailedRenderer,
           colors: topola.ChartColors.COLOR_BY_SEX,
-        }).render();
-      });
-      d3.json('data/data.json', (json) => {
-        topola.createChart({
-          json,
-          indiUrl: 'http://kielakowie.pl/tng/getperson.php?tree=tree381&personID=${id}',
-          famUrl: 'http://kielakowie.pl/tng/familygroup.php?tree=tree381&familyID=${id}',
-          svgSelector: '#hourglass',
-          chartType: topola.HourglassChart,
-          renderer: topola.DetailedRenderer,
         }).render({
-          startFam: 'F3047',
-        });
-
-        topola.createChart({
-          json,
-          indiUrl: 'http://kielakowie.pl/tng/getperson.php?tree=tree381&personID=${id}',
-          famUrl: 'http://kielakowie.pl/tng/familygroup.php?tree=tree381&familyID=${id}',
-          svgSelector: '#ancestors',
-          chartType: topola.HourglassChart,
-          renderer: topola.DetailedRenderer,
-          horizontal: true,
-        }).render({
-          startIndi: 'I46464',
-        });
-
-        topola.createChart({
-          json,
-          indiUrl: 'http://kielakowie.pl/tng/getperson.php?tree=tree381&personID=${id}',
-          famUrl: 'http://kielakowie.pl/tng/familygroup.php?tree=tree381&familyID=${id}',
-          svgSelector: '#descendants',
-          chartType: topola.DescendantChart,
-          renderer: topola.SimpleRenderer,
-          horizontal: true,
-        }).render({
-          startFam: 'F23172',
-        });
-
-        topola.createChart({
-          json,
-          svgSelector: '#fancy',
-          chartType: topola.FancyChart,
-          renderer: topola.CircleRenderer,
-        }).render({
-          startFam: 'F4910',
+          // startFam: 'F1',
+          startIndi: 'I0',
         });
       });
+      // d3.json('data/data.json', (json) => {
+      //   topola.createChart({
+      //     json,
+      //     indiUrl: 'http://kielakowie.pl/tng/getperson.php?tree=tree381&personID=${id}',
+      //     famUrl: 'http://kielakowie.pl/tng/familygroup.php?tree=tree381&familyID=${id}',
+      //     svgSelector: '#hourglass',
+      //     chartType: topola.HourglassChart,
+      //     renderer: topola.DetailedRenderer,
+      //   }).render({
+      //     startFam: 'F3047',
+      //   });
 
-      d3.json('data/tudor.json', (json) => {
-        topola.createChart({
-          json,
-          svgSelector: '#tudor',
-          chartType: topola.AncestorChart,
-          renderer: topola.DetailedRenderer,
-        }).render({
-          startFam: 'F15',
-        });
-      });
+      //   topola.createChart({
+      //     json,
+      //     indiUrl: 'http://kielakowie.pl/tng/getperson.php?tree=tree381&personID=${id}',
+      //     famUrl: 'http://kielakowie.pl/tng/familygroup.php?tree=tree381&familyID=${id}',
+      //     svgSelector: '#ancestors',
+      //     chartType: topola.HourglassChart,
+      //     renderer: topola.DetailedRenderer,
+      //     horizontal: true,
+      //   }).render({
+      //     startIndi: 'I46464',
+      //   });
 
-      d3.text('data/family2.ged', (gedcom) => {
-        var json = topola.gedcomToJson(gedcom);
-        topola.createChart({
-          json,
-          svgSelector: '#kinship',
-          chartType: topola.KinshipChart,
-          renderer: topola.DetailedRenderer,
-        }).render();
-      });
+      //   topola.createChart({
+      //     json,
+      //     indiUrl: 'http://kielakowie.pl/tng/getperson.php?tree=tree381&personID=${id}',
+      //     famUrl: 'http://kielakowie.pl/tng/familygroup.php?tree=tree381&familyID=${id}',
+      //     svgSelector: '#descendants',
+      //     chartType: topola.DescendantChart,
+      //     renderer: topola.SimpleRenderer,
+      //     horizontal: true,
+      //   }).render({
+      //     startFam: 'F23172',
+      //   });
+
+      //   topola.createChart({
+      //     json,
+      //     svgSelector: '#fancy',
+      //     chartType: topola.FancyChart,
+      //     renderer: topola.CircleRenderer,
+      //   }).render({
+      //     startFam: 'F4910',
+      //   });
+      // });
+
+      // d3.json('data/tudor.json', (json) => {
+      //   topola.createChart({
+      //     json,
+      //     svgSelector: '#tudor',
+      //     chartType: topola.AncestorChart,
+      //     renderer: topola.DetailedRenderer,
+      //   }).render({
+      //     startFam: 'F15',
+      //   });
+      // });
+
+      // d3.text('data/family2.ged', (gedcom) => {
+      //   var json = topola.gedcomToJson(gedcom);
+      //   topola.createChart({
+      //     json,
+      //     svgSelector: '#kinship',
+      //     chartType: topola.KinshipChart,
+      //     renderer: topola.DetailedRenderer,
+      //   }).render();
+      // });
 
       function download(elementId) {
         var contents = document.getElementById(elementId).outerHTML;

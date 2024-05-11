@@ -11,6 +11,7 @@ export * from './descendant-chart';
 export * from './detailed-renderer';
 export * from './gedcom';
 export * from './hourglass-chart';
+export * from './dag-chart';
 export * from './kinship-chart';
 export * from './relatives-chart';
 export * from './simple-api';

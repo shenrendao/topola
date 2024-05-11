@@ -47,6 +47,8 @@ export interface Indi {
   getId(): string;
   getFamiliesAsSpouse(): string[];
   getFamilyAsChild(): string | null;
+  setFamiliesAsSpouse(value: string[]): void;
+  setFamilyAsChild(value: string | null): void;
 }
 
 /**
@@ -64,6 +66,8 @@ export interface Fam {
 export interface DataProvider<IndiT extends Indi, FamT extends Fam> {
   getIndi(id: string): IndiT | null;
   getFam(id: string): FamT | null;
+  getIndis(): Map<string, IndiT>;
+  getFams(): Map<string, FamT>;
 }
 
 /** D3 selection containing TreeNode data. */

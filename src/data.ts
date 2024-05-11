@@ -106,6 +106,12 @@ class JsonIndiDetails implements IndiDetails {
   getFamilyAsChild() {
     return this.json.famc || null;
   }
+  setFamiliesAsSpouse(value: string[]): void {
+    this.json.fams = value
+  }
+  setFamilyAsChild(value: string | null): void {
+    this.json.famc = value || undefined
+  }
   getFirstName() {
     return this.json.firstName || null;
   }
@@ -205,5 +211,13 @@ export class JsonDataProvider implements DataProvider<IndiDetails, FamDetails> {
 
   getFam(id: string): FamDetails | null {
     return this.fams.get(id) || null;
+  }
+
+  getIndis(): Map<string, IndiDetails> {
+    return this.indis
+  }
+
+  getFams(): Map<string, FamDetails> {
+    return this.fams
   }
 }
