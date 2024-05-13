@@ -198,12 +198,22 @@ export class DagChart<IndiT extends Indi, FamT extends Fam>
         const [width, height]= (this.options.renderer as DetailedRenderer).getPreferredIndiSize(n.spouse.id);
         n.spouse.width = width
         n.spouse.height = height
+        if(n.indi && (n.indi.height ?? 0) < height) {
+          n.indi.height = height
+        }
+        if(n.indi && (n.indi.height ?? 0) > height) {
+          n.spouse.height = n.indi.height
+        }
       }
       n.width = Math.max(n.family?.width ?? 0, (n.indi?.width ?? 0) + (n.spouse?.width ?? 0))
-      n.height = (n.family?.height ?? 0) + Math.max((n.indi?.width ?? 0), (n.spouse?.width ?? 0))
+      n.height = (n.family?.height ?? 0) + Math.max((n.indi?.height ?? 0), (n.spouse?.height ?? 0))
     });
 
     console.log('treeNodes --------->', treeNodes);
+
+    // treeNodes.forEach(n => {
+    //   console.log(`size ${n.id} ${n.width} ${n.height}`)
+    // })
     
 
 
@@ -266,20 +276,23 @@ export class DagChart<IndiT extends Indi, FamT extends Fam>
 
     console.log('nodeArray ------------>', nodeArray)
 
-    const animationPromise = this.util.renderChart(nodeArray);
-    const info = getChartInfo(nodeArray);
+    // const animationPromise = this.util.renderChart(nodeArray);
+    // const info = getChartInfo(nodeArray);
 
     
 
-    const descendantNodes = layOutDescendants({...this.options, svgSelector: '#hourglass'});
+    const ancestorsRoot = getAncestorsTree(this.options);
+    const ancestorNodes = this.util.layOutChart(ancestorsRoot, {
+      flipVertically: true,
+    });
 
-    console.log('descendantNodes --------->', descendantNodes)
+    console.log('ancestorNodes --------->', ancestorNodes)
 
 
-    const nodes = descendantNodes;
-    // const animationPromise = this.util.renderChart(nodes);
+    const nodes = ancestorNodes;
+    const animationPromise = this.util.renderChart(nodes);
 
-    // const info = getChartInfo(nodes);
+    const info = getChartInfo(nodes);
     this.util.updateSvgDimensions(info);
     return Object.assign(info, { animationPromise });
   }
