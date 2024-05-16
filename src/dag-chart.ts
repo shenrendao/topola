@@ -3,19 +3,19 @@ import { HierarchyNode, HierarchyPointNode, stratify } from 'd3-hierarchy';
 import { max, min } from 'd3-array';
 import { getAncestorsTree } from './ancestor-chart';
 import { Chart, ChartInfo, ChartOptions, Fam, Indi, TreeNode } from './api';
-import { ChartUtil, LayoutOptions, getChartInfo } from './chart-util';
 import { layOutDescendants } from './descendant-chart';
 import { DetailedRenderer } from '.';
 import { Graph, graphStratify, sugiyama } from 'd3-dag';
+import { DagUtil, GraphNode ,getChartInfo} from './dag-util';
 
 
 export class DagChart<IndiT extends Indi, FamT extends Fam>
   implements Chart
 {
-  readonly util: ChartUtil;
+  readonly util: DagUtil;
 
   constructor(readonly options: ChartOptions) {
-    this.util = new ChartUtil(options);
+    this.util = new DagUtil(options);
   }
 
   render(): ChartInfo {
@@ -248,51 +248,79 @@ export class DagChart<IndiT extends Indi, FamT extends Fam>
 
 
     const nodeMap = dagNodes.reduce((m, n) => {
-      const node = {
-        data: treeNodes.find(treeNode => treeNode.id === n.data.id),
-        depth: yArray.indexOf(n.y),
-        height: 50,
-        id: n.data.id,
-        x: n.x,
-        y: n.y,
-        children: [] as HierarchyPointNode<TreeNode>[],
-      } as HierarchyPointNode<TreeNode>
+      const tn = treeMap.get(n.data.id)
+      const dn = dagNodes.find(dagNode => dagNode.data.id === n.data.id)
+      if(!tn || !dn) {
+        return m
+      }
+      // treeNode.indi
+      const node: GraphNode = {
+        id: tn.id,
+        indi: tn.indi ? {
+          id: tn.indi.id,
+          width: tn.indi.width!,
+          height: tn.indi.height!,
+          anchor: [0, 0],
+        } : undefined,
+        spouse: tn.spouse ? {
+          id: tn.spouse.id,
+          width: tn.spouse.width!,
+          height: tn.spouse.height!,
+          anchor: [0, 0],
+        }: undefined,
+        family: tn.family ? {
+          id: tn.family.id,
+          width: tn.family.width!,
+          height: tn.family.height!,
+          anchor: [0, 0],
+        }: undefined,
+        width: tn.width!,
+        height: tn.height!,
+        x: dn.x,
+        y: dn.y,
+        generation: yArray.indexOf(n.y),
+      }
       m.set(n.data.id, node)
       return m
-    }, new Map<string, HierarchyPointNode<TreeNode>>())
+    }, new Map<string, GraphNode>())
     const nodeArray = Array.from(nodeMap.values())
 
-    data.forEach(item => {
-      const childId = item.id
-      const child = nodeMap.get(childId)
-      item.parentIds.forEach(parentId => {
-        const parent = nodeMap.get(parentId)
-        if(child && parent) {
-          child.parent = parent
-          parent.children?.push(child)
-        }
-      })
-    })
+    // data.forEach(item => {
+    //   const childId = item.id
+    //   const child = nodeMap.get(childId)
+    //   item.parentIds.forEach(parentId => {
+    //     const parent = nodeMap.get(parentId)
+    //     if(child && parent) {
+    //       child.parent = parent
+    //       parent.children?.push(child)
+    //     }
+    //   })
+    // })
 
     console.log('nodeArray ------------>', nodeArray)
 
-    // const animationPromise = this.util.renderChart(nodeArray);
-    // const info = getChartInfo(nodeArray);
+    const svg = select(this.options.svgSelector);
+    if (svg.select('style').empty()) {
+      svg.append('style').text(this.options.renderer.getCss());
+    }
+
+    const animationPromise = this.util.renderChart(nodeArray, [] as any);
+    const info = getChartInfo(nodeArray);
 
     
 
-    const ancestorsRoot = getAncestorsTree(this.options);
-    const ancestorNodes = this.util.layOutChart(ancestorsRoot, {
-      flipVertically: true,
-    });
+    // const ancestorsRoot = getAncestorsTree(this.options);
+    // const ancestorNodes = this.util.layOutChart(ancestorsRoot, {
+    //   flipVertically: true,
+    // });
 
-    console.log('ancestorNodes --------->', ancestorNodes)
+    // console.log('ancestorNodes --------->', ancestorNodes)
 
 
-    const nodes = ancestorNodes;
-    const animationPromise = this.util.renderChart(nodes);
+    // const nodes = ancestorNodes;
+    // const animationPromise = this.util.renderChart(nodes);
 
-    const info = getChartInfo(nodes);
+    // const info = getChartInfo(nodes);
     this.util.updateSvgDimensions(info);
     return Object.assign(info, { animationPromise });
   }
