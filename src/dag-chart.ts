@@ -6,7 +6,7 @@ import { Chart, ChartInfo, ChartOptions, Fam, Indi, TreeNode } from './api';
 import { layOutDescendants } from './descendant-chart';
 import { DetailedRenderer } from '.';
 import { Graph, graphStratify, sugiyama } from 'd3-dag';
-import { DagUtil, GraphNode ,getChartInfo} from './dag-util';
+import { DagUtil, GraphLink, GraphNode ,getChartInfo} from './dag-util';
 
 
 export class DagChart<IndiT extends Indi, FamT extends Fam>
@@ -179,6 +179,28 @@ export class DagChart<IndiT extends Indi, FamT extends Fam>
     //     }
     //   }
     // })
+    const links: GraphLink[] = []
+    fams.forEach(f => {
+      f.getChildren().forEach(c => {
+        const indi = indiMap.get(c)
+        if(indi) {
+          links.push(...indi.getFamiliesAsSpouse().map(familyAsSpouse => ({
+            parentId: f.getId(),
+            childId: familyAsSpouse,
+            childIndiSpouseId: c
+          })))
+          const node = treeMap.get(indi.getId())
+          if(node) {
+            links.push({
+              parentId: f.getId(),
+              childId: node.id,
+              childIndiSpouseId: node.id,
+            })
+          }
+        }
+      })
+    })
+    console.log('links -------->', links)
 
     const data = Array.from(reverseMap.values());
     console.log('data ----------->', data)
@@ -283,7 +305,19 @@ export class DagChart<IndiT extends Indi, FamT extends Fam>
       m.set(n.data.id, node)
       return m
     }, new Map<string, GraphNode>())
-    const nodeArray = Array.from(nodeMap.values())
+    const nodeArray = Array.from(nodeMap.values()).map(n => {
+      if(n.indi) {
+        n.indi.anchor = getIndiAnchor(n)
+      }
+      if(n.spouse) {
+        n.spouse.anchor = getSpouseAnchor(n)
+      }
+      if(n.family) {
+        n.family.anchor = getFamilyAnchor(n)
+      }
+
+      return n
+    })
 
     // data.forEach(item => {
     //   const childId = item.id
@@ -304,7 +338,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam>
       svg.append('style').text(this.options.renderer.getCss());
     }
 
-    const animationPromise = this.util.renderChart(nodeArray, [] as any);
+    const animationPromise = this.util.renderChart(nodeArray, links);
     const info = getChartInfo(nodeArray);
 
     
@@ -366,7 +400,54 @@ export class DagChart<IndiT extends Indi, FamT extends Fam>
     // });
     return nodes;
   }
-  
-  
 }
 
+const getFamilyAnchor = (node: GraphNode): [number, number] => {
+  const famXOffset = node.family
+    ? max([-getFamPositionVertical(node), 0])
+    : 0;
+  const x =
+    -(node.indi && node.spouse ? node.width! / 2 - node.indi.width! : 0) +
+    famXOffset!;
+  const y =
+    -node.height! / 2 + getIndiVSize(node) / 2;
+  return [x, y];
+}
+
+const getSpouseAnchor = (node: GraphNode): [number, number] => {
+  const x = node.indi ? node.indi.width! / 2 : 0;
+  const y =
+    -node.height! / 2 + getIndiVSize(node) / 2;
+  return [x, y];
+}
+
+const getIndiAnchor = (node: GraphNode): [number, number] => {
+  const x = node.spouse ? -node.spouse.width! / 2 : 0;
+  const y =
+    -node.height! / 2 + getIndiVSize(node) / 2;
+  return [x, y];
+}
+
+function getFamPositionVertical(node: GraphNode): number {
+  const indiWidth = node.indi ? node.indi.width! : 0;
+  const spouseWidth = node.spouse ? node.spouse.width! : 0;
+  const familyWidth = node.family!.width!;
+  if (!node.indi || !node.spouse || indiWidth + spouseWidth <= familyWidth) {
+    return (indiWidth + spouseWidth - familyWidth) / 2;
+  }
+  if (familyWidth / 2 >= spouseWidth) {
+    return indiWidth + spouseWidth - familyWidth;
+  }
+  if (familyWidth / 2 >= indiWidth) {
+    return 0;
+  }
+  return indiWidth - familyWidth / 2;
+}
+
+/** Returns the vertical size of individual boxes. */
+function getIndiVSize(node: GraphNode): number {
+  return max([
+    node.indi ? node.indi.height! : 0,
+    node.spouse ? node.spouse.height! : 0,
+  ])!;
+}

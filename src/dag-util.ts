@@ -69,8 +69,8 @@ export interface ChartSizeInfo {
 }
 
 /** Assigns an identifier to a link. */
-export function linkId(parent: GraphNode, child: GraphNode) {
-  return `${parent.id}:${child.id}`;
+export function linkId(link: GraphLink) {
+  return `${link.parentId}:${link.childId}`;
 }
 
 export function getChartInfo(
@@ -138,10 +138,10 @@ export class DagUtil {
   renderChart(nodes: Array<GraphNode>, links: Array<GraphLink>): Promise<void> {
     const svg = this.getSvgForRendering();
     const nodeAnimation = this.renderNodes(nodes, svg);
-    // const linkAnimation = this.renderLinks(nodes, svg);
+    const linkAnimation = this.renderLinks(nodes, links, svg);
     return Promise.all([
       nodeAnimation,
-      // linkAnimation,
+      linkAnimation,
     ]) as unknown as Promise<void>;
   }
 
@@ -250,90 +250,91 @@ export class DagUtil {
     return animationPromise;
   }
 
-  // renderLinks(
-  //   nodes: Array<HierarchyPointNode<TreeNode>>,
-  //   svg: SVGSelection
-  // ): Promise<void> {
-  //   const animationPromise = new Promise<void>((resolve) => {
-  //     const link = (
-  //       parent: HierarchyPointNode<TreeNode>,
-  //       child: HierarchyPointNode<TreeNode>
-  //     ) => {
-  //       if (child.data.additionalMarriage) {
-  //         return this.linkAdditionalMarriage(child);
-  //       }
-  //       const flipVertically = parent.data.generation! > child.data.generation!;
-  //       if (this.options.horizontal) {
-  //         if (flipVertically) {
-  //           return this.linkHorizontal(child, parent);
-  //         }
-  //         return this.linkHorizontal(parent, child);
-  //       }
-  //       if (flipVertically) {
-  //         return this.linkVertical(child, parent);
-  //       }
-  //       return this.linkVertical(parent, child);
-  //     };
+  renderLinks(
+    nodes: Array<GraphNode>, 
+    links: Array<GraphLink>,
+    svg: SVGSelection
+  ): Promise<void> {
+    const animationPromise = new Promise<void>((resolve) => {
+      const link = (
+        parent: GraphNode,
+        child: GraphNode,
+        lk: GraphLink,
+      ) => {
+        // if (child.data.additionalMarriage) {
+        //   return this.linkAdditionalMarriage(child);
+        // }
+        return this.linkVertical(parent, child, lk);
+      };
 
-  //     const links = nodes.filter(
-  //       (n) => !!n.parent || n.data.additionalMarriage
-  //     );
-  //     const boundLinks = svg
-  //       .select('g')
-  //       .selectAll('path.link')
-  //       .data(links, linkId);
-  //     const path = boundLinks
-  //       .enter()
-  //       .insert('path', 'g')
-  //       .attr('class', (node) =>
-  //         node.data.additionalMarriage ? 'link additional-marriage' : 'link'
-  //       )
-  //       .attr('d', (node) => link(node.parent!, node));
+      // const links = nodes.filter(
+      //   (n) => n. !!n.parent || n.data.additionalMarriage
+      // );
+      const boundLinks = svg
+        .select('g')
+        .selectAll('path.link')
+        .data(links, linkId);
+      const path = boundLinks
+        .enter()
+        .insert('path', 'g')
+        .attr('class', () =>
+          // node.data.additionalMarriage ? 'link additional-marriage' : 'link'
+          'link'
+        )
+        .attr('d', (lk) => {
+          const parent = nodes.find(n => n.id === lk.parentId)!
+          const child = nodes.find(n => n.id === lk.childId)!
+          return link(parent, child, lk)
+        });
 
-  //     let transitionsPending =
-  //       boundLinks.exit().size() + boundLinks.size() + path.size();
-  //     const transitionDone = () => {
-  //       transitionsPending--;
-  //       if (transitionsPending === 0) {
-  //         resolve();
-  //       }
-  //     };
-  //     if (!this.options.animate || transitionsPending === 0) {
-  //       resolve();
-  //     }
+      let transitionsPending =
+        boundLinks.exit().size() + boundLinks.size() + path.size();
+      const transitionDone = () => {
+        transitionsPending--;
+        if (transitionsPending === 0) {
+          resolve();
+        }
+      };
+      if (!this.options.animate || transitionsPending === 0) {
+        resolve();
+      }
 
-  //     const linkTransition = this.options.animate
-  //       ? boundLinks
-  //           .transition()
-  //           .delay(HIDE_TIME_MS)
-  //           .duration(MOVE_TIME_MS)
-  //           .on('end', transitionDone)
-  //       : boundLinks;
-  //     linkTransition.attr('d', (node) => link(node.parent!, node));
+      const linkTransition = this.options.animate
+        ? boundLinks
+            .transition()
+            .delay(HIDE_TIME_MS)
+            .duration(MOVE_TIME_MS)
+            .on('end', transitionDone)
+        : boundLinks;
+      linkTransition.attr('d', (lk) => {
+        const parent = nodes.find(n => n.id === lk.parentId)!
+        const child = nodes.find(n => n.id === lk.childId)!
+        return link(parent, child, lk)
+      });
 
-  //     if (this.options.animate) {
-  //       path
-  //         .style('opacity', 0)
-  //         .transition()
-  //         .delay(2 * HIDE_TIME_MS + MOVE_TIME_MS)
-  //         .duration(0)
-  //         .style('opacity', 1)
-  //         .on('end', transitionDone);
-  //     }
-  //     if (this.options.animate) {
-  //       boundLinks
-  //         .exit()
-  //         .transition()
-  //         .duration(0)
-  //         .style('opacity', 0)
-  //         .remove()
-  //         .on('end', transitionDone);
-  //     } else {
-  //       boundLinks.exit().remove();
-  //     }
-  //   });
-  //   return animationPromise;
-  // }
+      if (this.options.animate) {
+        path
+          .style('opacity', 0)
+          .transition()
+          .delay(2 * HIDE_TIME_MS + MOVE_TIME_MS)
+          .duration(0)
+          .style('opacity', 1)
+          .on('end', transitionDone);
+      }
+      if (this.options.animate) {
+        boundLinks
+          .exit()
+          .transition()
+          .duration(0)
+          .style('opacity', 0)
+          .remove()
+          .on('end', transitionDone);
+      } else {
+        boundLinks.exit().remove();
+      }
+    });
+    return animationPromise;
+  }
 
   getSvgForRendering(): SVGSelection {
     const svg = select(this.options.svgSelector) as SVGSelection;
