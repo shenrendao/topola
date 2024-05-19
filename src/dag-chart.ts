@@ -1,6 +1,6 @@
 import { select } from 'd3-selection'
 import { max } from 'd3-array'
-import { Chart, ChartInfo, ChartOptions, Fam, Indi, TreeNode } from './api'
+import { Chart, ChartInfo, ChartOptions, Fam, Indi } from './api'
 import { DetailedRenderer } from '.'
 import { Graph, graphStratify, sugiyama } from 'd3-dag'
 import { DagUtil, GraphLink, GraphNode, getChartInfo } from './dag-util'
@@ -20,6 +20,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
     const famMap = this.options.data.getFams()
     const fams = Array.from(famMap.values())
 
+    // validate data without modification
     ;(() => {
       indis.forEach(indi => {
         indi.getFamiliesAsSpouse().forEach(fid => {
@@ -99,6 +100,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       })
     })()
 
+    // fix data error
     fams.forEach(fam => {
       const fid = fam.getId()
       const father = fam.getFather()
@@ -133,50 +135,75 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       })
     })
 
-    const treeMap = indis.reduce((m, indi) => {
-      this.getNodes(indi.getId(), indiMap).forEach(n => {
+    // get node data with ids and sizing
+    const nodeDataMap = indis.reduce((m, indi) => {
+      this.getGraphNodes(indi.getId()).forEach(n => {
         m.set(n.id, n)
       })
       return m
-    }, new Map<string, TreeNode>())
-    const treeNodes = Array.from(treeMap.values())
+    }, new Map<string, GraphNode>())
+    const nodeDataArray = Array.from(nodeDataMap.values())
+    console.log('nodeDataArray ----------->', nodeDataArray)
 
-    console.log('treeNodes ----------->', treeNodes)
-
-    const reverseMap = treeNodes.reduce((m, indi) => {
-      m.set(indi.id, { id: indi.id, parentIds: [] })
-      return m
-    }, new Map<string, { id: string; parentIds: string[] }>())
-
-    fams.forEach(f => {
-      f.getChildren().forEach(c => {
-        const n = reverseMap.get(c)
-        if (n) {
-          n.parentIds = [...n.parentIds, f.getId()]
-          return
-        }
-        const indi = indiMap.get(c)
-        indi?.getFamiliesAsSpouse().forEach(fid => {
-          const familyNode = treeMap.get(fid)
-          if (familyNode && !familyNode.additionalMarriage) {
-            const nn = reverseMap.get(fid)
-            if (nn) {
-              nn.parentIds = [...nn.parentIds, f.getId()]
-            }
+    // get dag definition and node sizes for calculating layout
+    const dagDefinition = (() => {
+      const nodeParentsMap = nodeDataArray.reduce((m, node) => {
+        m.set(node.id, { id: node.id, parentIds: [] })
+        return m
+      }, new Map<string, { id: string; parentIds: string[] }>())
+      fams.forEach(f => {
+        f.getChildren().forEach(c => {
+          const n = nodeParentsMap.get(c)
+          if (n) {
+            n.parentIds = [...n.parentIds, f.getId()]
+            return
           }
+          const indi = indiMap.get(c)
+          indi?.getFamiliesAsSpouse().forEach(fid => {
+            const familyNode = nodeDataMap.get(fid)
+            if (familyNode /* && !familyNode.additionalMarriage */) {
+              const nn = nodeParentsMap.get(fid)
+              if (nn) {
+                nn.parentIds = [...nn.parentIds, f.getId()]
+              }
+            }
+          })
         })
       })
+      return Array.from(nodeParentsMap.values())
+    })()
+    console.log('dagDefinition ----------->', dagDefinition)
+
+    const builder = graphStratify()
+    const graph = builder(dagDefinition)
+    const layout = sugiyama()
+      .nodeSize((n: { data: { id: string; parentIds: string[] } }) => {
+        const { width, height } = nodeDataMap.get(n.data.id)!
+        return [width, height]
+      })
+      .gap([15, 30])
+    layout(graph as unknown as Graph<never, never>)
+    const dagNodes = Array.from(graph.nodes())
+    console.log('dagNodes ---------->', dagNodes)
+
+    const yArray = Array.from(
+      dagNodes.reduce((s, n) => {
+        s.add(n.y)
+        return s
+      }, new Set<number>()),
+    ).sort((a, b) => {
+      return a - b
+    })
+    console.log('yArray ----------->', yArray)
+
+    // set position and generation
+    dagNodes.forEach(n => {
+      const nodeData = nodeDataMap.get(n.data.id)!
+      nodeData.x = n.x
+      nodeData.y = n.y
+      nodeData.generation = yArray.indexOf(n.y)
     })
 
-    // indis.forEach(i => {
-    //   const parent = i.getFamilyAsChild()
-    //   if(parent) {
-    //     const n = reverseMap.get(i.getId())
-    //     if(n && !n.parentIds.includes(parent)) {
-    //       n.parentIds = [...n.parentIds, parent]
-    //     }
-    //   }
-    // })
     const links: GraphLink[] = []
     fams.forEach(f => {
       f.getChildren().forEach(c => {
@@ -189,7 +216,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
               childIndiSpouseId: c,
             })),
           )
-          const node = treeMap.get(indi.getId())
+          const node = nodeDataMap.get(indi.getId())
           if (node) {
             links.push({
               parentId: f.getId(),
@@ -202,191 +229,95 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
     })
     console.log('links -------->', links)
 
-    const data = Array.from(reverseMap.values())
-    console.log('data ----------->', data)
-
-    treeNodes.forEach(n => {
-      if (n.family?.id) {
-        const [width, height] = (this.options.renderer as DetailedRenderer).getPreferredFamSize(n.family.id)
-        n.family.width = width
-        n.family.height = height
-      }
-      if (n.indi?.id) {
-        const [width, height] = (this.options.renderer as DetailedRenderer).getPreferredIndiSize(n.indi.id)
-        n.indi.width = width
-        n.indi.height = height
-      }
-      if (n.spouse?.id) {
-        const [width, height] = (this.options.renderer as DetailedRenderer).getPreferredIndiSize(n.spouse.id)
-        n.spouse.width = width
-        n.spouse.height = height
-        if (n.indi && (n.indi.height ?? 0) < height) {
-          n.indi.height = height
-        }
-        if (n.indi && (n.indi.height ?? 0) > height) {
-          n.spouse.height = n.indi.height
-        }
-      }
-      n.width = Math.max(n.family?.width ?? 0, (n.indi?.width ?? 0) + (n.spouse?.width ?? 0))
-      n.height = (n.family?.height ?? 0) + Math.max(n.indi?.height ?? 0, n.spouse?.height ?? 0)
-    })
-
-    console.log('treeNodes --------->', treeNodes)
-
-    // treeNodes.forEach(n => {
-    //   console.log(`size ${n.id} ${n.width} ${n.height}`)
-    // })
-
-    const builder = graphStratify()
-    const graph = builder(data)
-    const layout = sugiyama()
-      //.layering(d3dag.layeringLongestPath())
-      //.decross(d3dag.decrossOpt())
-      //.coord(d3dag.coordGreedy())
-      //.coord(d3dag.coordQuad())
-      .nodeSize((n: { data: { id: string; parentIds: string[] } }) => {
-        const nodeWithSize = treeNodes.find(treeNode => treeNode.id === n.data.id)
-        if (nodeWithSize) {
-          const { width, height } = nodeWithSize
-          return [width ?? 20, height ?? 20]
-        }
-        return [20, 20]
-      })
-      .gap([15, 30])
-    const { width, height } = layout(graph as unknown as Graph<never, never>)
-    const dagNodes = Array.from(graph.nodes())
-    console.log('dagNodes ---------->', dagNodes)
-
-    const yArray = Array.from(
-      dagNodes.reduce((s, n) => {
-        s.add(n.y)
-        return s
-      }, new Set<number>()),
-    ).sort((a, b) => {
-      return a - b
-    })
-
-    console.log('yArray ----------->', yArray)
-
-    const nodeMap = dagNodes.reduce((m, n) => {
-      const tn = treeMap.get(n.data.id)
-      const dn = dagNodes.find(dagNode => dagNode.data.id === n.data.id)
-      if (!tn || !dn) {
-        return m
-      }
-      // treeNode.indi
-      const node: GraphNode = {
-        id: tn.id,
-        indi: tn.indi
-          ? {
-              id: tn.indi.id,
-              width: tn.indi.width!,
-              height: tn.indi.height!,
-              anchor: [0, 0],
-            }
-          : undefined,
-        spouse: tn.spouse
-          ? {
-              id: tn.spouse.id,
-              width: tn.spouse.width!,
-              height: tn.spouse.height!,
-              anchor: [0, 0],
-            }
-          : undefined,
-        family: tn.family
-          ? {
-              id: tn.family.id,
-              width: tn.family.width!,
-              height: tn.family.height!,
-              anchor: [0, 0],
-            }
-          : undefined,
-        width: tn.width!,
-        height: tn.height!,
-        x: dn.x,
-        y: dn.y,
-        generation: yArray.indexOf(n.y),
-      }
-      m.set(n.data.id, node)
-      return m
-    }, new Map<string, GraphNode>())
-    const nodeArray = Array.from(nodeMap.values()).map(n => {
-      if (n.indi) {
-        n.indi.anchor = getIndiAnchor(n)
-      }
-      if (n.spouse) {
-        n.spouse.anchor = getSpouseAnchor(n)
-      }
-      if (n.family) {
-        n.family.anchor = getFamilyAnchor(n)
-      }
-
-      return n
-    })
-
-    // data.forEach(item => {
-    //   const childId = item.id
-    //   const child = nodeMap.get(childId)
-    //   item.parentIds.forEach(parentId => {
-    //     const parent = nodeMap.get(parentId)
-    //     if(child && parent) {
-    //       child.parent = parent
-    //       parent.children?.push(child)
-    //     }
-    //   })
-    // })
-
-    console.log('nodeArray ------------>', nodeArray)
-
     const svg = select(this.options.svgSelector)
     if (svg.select('style').empty()) {
       svg.append('style').text(this.options.renderer.getCss())
     }
 
-    const animationPromise = this.util.renderChart(nodeArray, links)
-    const info = getChartInfo(nodeArray)
+    const animationPromise = this.util.renderChart(nodeDataArray, links)
+    const info = getChartInfo(nodeDataArray)
     this.util.updateSvgDimensions(info)
     return Object.assign(info, { animationPromise })
   }
 
-  private getNodes(indiId: string, indiMap: Map<string, Indi>): TreeNode[] {
+  private getGraphNodes(indiId: string): GraphNode[] {
     const indi = this.options.data.getIndi(indiId)!
     const famIds = indi.getFamiliesAsSpouse()
     if (!famIds.length) {
       // Single person.
-      return [
-        {
+      const [width, height] = (this.options.renderer as DetailedRenderer).getPreferredIndiSize(indiId)
+      const node: GraphNode = {
+        id: indiId,
+        indi: {
           id: indiId,
-          indi: {
-            id: indiId,
-          },
+          additionalMarriage: false,
+          width,
+          height,
+          anchor: [0, 0],
         },
-      ]
+        width,
+        height,
+        x: 0, // pending initialization
+        y: 0, // pending initialization
+        generation: 0, // pending initialization
+      }
+      node.indi!.anchor = getIndiAnchor(node)
+      return [node]
     }
     // Marriages.
     const nodes = famIds.map(famId => {
       const fam = this.options.data.getFam(famId)!
-      const entry: TreeNode = {
+      const father = fam.getFather()
+      const mother = fam.getMother()
+
+      const [fatherWidth, fatherHeight] = father
+        ? (this.options.renderer as DetailedRenderer).getPreferredIndiSize(father)
+        : [0, 0]
+      const [motherWidth, motherHeight] = mother
+        ? (this.options.renderer as DetailedRenderer).getPreferredIndiSize(mother)
+        : [0, 0]
+      const fatherMotherHeight = Math.max(fatherHeight, motherHeight)
+      const [familyWidth, familyHeight] = (this.options.renderer as DetailedRenderer).getPreferredFamSize(famId)
+      const nodeWidth = Math.max(familyWidth, fatherWidth + motherWidth)
+      const nodeHeight = familyHeight + fatherMotherHeight
+
+      const node: GraphNode = {
         id: famId,
         indi: fam.getFather()
           ? {
               id: fam.getFather()!,
+              additionalMarriage: false,
+              width: fatherWidth,
+              height: fatherMotherHeight,
+              anchor: [0, 0],
             }
           : undefined,
         spouse: fam.getMother()
           ? {
               id: fam.getMother()!,
+              additionalMarriage: false,
+              width: motherWidth,
+              height: fatherMotherHeight,
+              anchor: [0, 0],
             }
           : undefined,
         family: {
           id: famId,
+          additionalMarriage: false,
+          width: familyWidth,
+          height: familyHeight,
+          anchor: (this.options.renderer as DetailedRenderer).getPreferredFamSize(famId),
         },
-        indiParentNodeId:
-          (fam.getFather() ? indiMap.get(fam.getFather()!)?.getFamilyAsChild() : undefined) || undefined,
-        spouseParentNodeId:
-          (fam.getMother() ? indiMap.get(fam.getMother()!)?.getFamilyAsChild() : undefined) || undefined,
+        width: nodeWidth,
+        height: nodeHeight,
+        x: 0, // pending initialization
+        y: 0, // pending initialization
+        generation: 0, // pending initialization
       }
-      return entry
+      node.indi && (node.indi.anchor = getIndiAnchor(node))
+      node.spouse && (node.spouse.anchor = getSpouseAnchor(node))
+      node.family && (node.family.anchor = getFamilyAnchor(node))
+      return node
     })
     // nodes.slice(1).forEach((node) => {
     //   node.additionalMarriage = true;
