@@ -8,8 +8,11 @@ import { DagUtil, GraphLink, GraphNode, getChartInfo } from './dag-util'
 export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
   readonly util: DagUtil
 
+  private connectedNo: number
+
   constructor(readonly options: ChartOptions) {
     this.util = new DagUtil(options)
+    this.connectedNo = 0
   }
 
   render(): ChartInfo {
@@ -143,7 +146,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       return m
     }, new Map<string, GraphNode>())
     const nodeDataArray = Array.from(nodeDataMap.values())
-    console.log('nodeDataArray ----------->', nodeDataArray)
+    // console.log('nodeDataArray ----------->', nodeDataArray)
 
     // get dag definition and node sizes for calculating layout
     const dagDefinition = (() => {
@@ -170,8 +173,72 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
           })
         })
       })
-      return Array.from(nodeParentsMap.values())
+
+      const nodeParentsArray = Array.from(nodeParentsMap.values())
+
+      // set graph connected identifier
+      let changed: boolean
+      do {
+        changed = false
+        nodeParentsArray.forEach(nodeParents => {
+          const childNode = nodeDataMap.get(nodeParents.id)!
+          nodeParents.parentIds.forEach(parentId => {
+            const parentNode = nodeDataMap.get(parentId)!
+            if (childNode.connectedNo !== parentNode.connectedNo) {
+              changed = true
+              if (childNode.connectedNo > parentNode.connectedNo) {
+                childNode.connectedNo = parentNode.connectedNo
+              }
+              if (childNode.connectedNo < parentNode.connectedNo) {
+                parentNode.connectedNo = childNode.connectedNo
+              }
+            }
+          })
+        })
+      } while (changed)
+
+      // At this monment, the parent-children relationship has been built.
+      // And then re-marriage relationship should be added into the graph.
+      const connectionMap = nodeDataArray.reduce((s, n) => {
+        s.set(n.connectedNo, [n.connectedNo])
+        return s
+      }, new Map<number, number[]>())
+      indis
+        .filter(indi => indi.getFamiliesAsSpouse().length > 1)
+        .forEach(indi => {
+          const familyNodes = indi.getFamiliesAsSpouse().map(fid => nodeDataMap.get(fid)!)
+
+          let changed: boolean
+          do {
+            changed = false
+            familyNodes.forEach((familyNode, index, array) => {
+              if (index === 0) {
+                return
+              }
+              const previousNode = array[index - 1]
+              if (
+                previousNode.connectedNo !== familyNode.connectedNo &&
+                !connectionMap.get(familyNode.connectedNo)!.includes(previousNode.connectedNo)
+              ) {
+                if (nodeParentsMap.get(familyNode.id)!.parentIds.length > 0) {
+                  nodeParentsMap.get(previousNode.id)!.parentIds.push(nodeParentsMap.get(familyNode.id)!.parentIds[0])
+                  connectionMap.get(familyNode.connectedNo)!.push(previousNode.connectedNo)
+                  connectionMap.get(previousNode.connectedNo)!.push(familyNode.connectedNo)
+                  changed = true
+                } else if (nodeParentsMap.get(previousNode.id)!.parentIds.length > 0) {
+                  nodeParentsMap.get(familyNode.id)!.parentIds.push(nodeParentsMap.get(previousNode.id)!.parentIds[0])
+                  connectionMap.get(familyNode.connectedNo)!.push(previousNode.connectedNo)
+                  connectionMap.get(previousNode.connectedNo)!.push(familyNode.connectedNo)
+                  changed = true
+                }
+              }
+            })
+          } while (changed)
+        })
+      return nodeParentsArray
     })()
+
+    console.log('nodeDataArray ----------->', nodeDataArray)
     console.log('dagDefinition ----------->', dagDefinition)
 
     const builder = graphStratify()
@@ -247,6 +314,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       // Single person.
       const [width, height] = (this.options.renderer as DetailedRenderer).getPreferredIndiSize(indiId)
       const node: GraphNode = {
+        connectedNo: this.connectedNo++,
         id: indiId,
         indi: {
           id: indiId,
@@ -282,6 +350,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       const nodeHeight = familyHeight + fatherMotherHeight
 
       const node: GraphNode = {
+        connectedNo: this.connectedNo++,
         id: famId,
         indi: fam.getFather()
           ? {

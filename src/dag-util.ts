@@ -13,6 +13,9 @@ type NodeEntry = {
 }
 
 export type GraphNode = {
+  // connected identifier
+  connectedNo: number
+
   // Family ID when represents family, or
   // indi ID when represents single individual.
   id: string
