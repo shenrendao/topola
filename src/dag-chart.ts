@@ -146,16 +146,74 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
     console.log('nodeDataArray ----------->', nodeDataArray)
 
     // get dag definition and node sizes for calculating layout
+    // merge first marriage and additional marriage into a node
+    // FIXME: compositeNodes need to be merged again for complex re-marriage cases
+    const compositeNodes: {
+      id: string
+      originIds: string[]
+      parentIds: string[]
+      width: number
+      height: number
+    }[] = indis
+      .filter(indi => indi.getFamiliesAsSpouse().length > 1)
+      .map((indi, index) => {
+        const parentIds = Array.from(
+          indi.getFamiliesAsSpouse().reduce((pids, fid) => {
+            const fatherId = famMap.get(fid)?.getFather()
+            const motherId = famMap.get(fid)?.getMother()
+            const fatherParent = fatherId ? indiMap.get(fatherId)?.getFamilyAsChild() : undefined
+            const motherParent = motherId ? indiMap.get(motherId)?.getFamilyAsChild() : undefined
+            fatherParent && pids.add(fatherParent)
+            motherParent && pids.add(motherParent)
+            return pids
+          }, new Set<string>()),
+        )
+        const width = indi.getFamiliesAsSpouse().reduce((w, fid, index) => {
+          return w + nodeDataMap.get(fid)!.width + (index > 0 ? 15 : 0)
+        }, 0)
+        const height = indi.getFamiliesAsSpouse().reduce((h, fid) => {
+          return Math.max(h, nodeDataMap.get(fid)!.height)
+        }, 0)
+        return {
+          id: `composite_${index}`,
+          originIds: indi.getFamiliesAsSpouse(),
+          parentIds,
+          width,
+          height,
+        }
+      })
+    const originIdToCompositeIdMap = compositeNodes.reduce((m, cn) => {
+      cn.originIds.forEach(originId => {
+        m.set(originId, cn.id)
+      })
+      return m
+    }, new Map<string, string>())
+    compositeNodes.forEach(cn => {
+      const parentIds = new Set<string>()
+      cn.parentIds.forEach(parentId => {
+        parentIds.add(originIdToCompositeIdMap.get(parentId) || parentId)
+      })
+      cn.parentIds = Array.from(parentIds)
+    })
+
+    console.log('compositionNodes ------------------->', compositeNodes)
+
     const dagDefinition = (() => {
       const nodeParentsMap = nodeDataArray.reduce((m, node) => {
-        m.set(node.id, { id: node.id, parentIds: [] })
+        if (!originIdToCompositeIdMap.has(node.id)) {
+          m.set(node.id, { id: node.id, parentIds: [] })
+        }
         return m
       }, new Map<string, { id: string; parentIds: string[] }>())
+      compositeNodes.forEach(cn => {
+        nodeParentsMap.set(cn.id, { id: cn.id, parentIds: cn.parentIds })
+      })
       fams.forEach(f => {
+        const nodeId = originIdToCompositeIdMap.get(f.getId()) || f.getId()
         f.getChildren().forEach(c => {
           const n = nodeParentsMap.get(c)
           if (n) {
-            n.parentIds = [...n.parentIds, f.getId()]
+            n.parentIds = [...n.parentIds, nodeId]
             return
           }
           const indi = indiMap.get(c)
@@ -164,7 +222,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
             if (familyNode /* && !familyNode.additionalMarriage */) {
               const nn = nodeParentsMap.get(fid)
               if (nn) {
-                nn.parentIds = [...nn.parentIds, f.getId()]
+                nn.parentIds = [...nn.parentIds, nodeId]
               }
             }
           })
@@ -178,7 +236,8 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
     const graph = builder(dagDefinition)
     const layout = sugiyama()
       .nodeSize((n: { data: { id: string; parentIds: string[] } }) => {
-        const { width, height } = nodeDataMap.get(n.data.id)!
+        const compositeNode = compositeNodes.find(cn => cn.id === n.data.id)
+        const { width, height } = (compositeNode || nodeDataMap.get(n.data.id))!
         return [width, height]
       })
       .gap([15, 30])
@@ -198,10 +257,24 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
 
     // set position and generation
     dagNodes.forEach(n => {
-      const nodeData = nodeDataMap.get(n.data.id)!
-      nodeData.x = n.x
-      nodeData.y = n.y
-      nodeData.generation = yArray.indexOf(n.y)
+      const compositeNode = compositeNodes.find(cn => cn.id === n.data.id)
+      if (compositeNode) {
+        let offsetX = 0
+        for (let i = 0; i < compositeNode.originIds.length; i++) {
+          const originId = compositeNode.originIds[i]
+          const nodeData = nodeDataMap.get(originId)!
+          nodeData.x = n.x - 0.5 * compositeNode.width + 0.5 * nodeData.width + offsetX
+          nodeData.y = n.y
+          nodeData.generation = yArray.indexOf(n.y)
+
+          offsetX += nodeData.width + 15
+        }
+      } else {
+        const nodeData = nodeDataMap.get(n.data.id)!
+        nodeData.x = n.x
+        nodeData.y = n.y
+        nodeData.generation = yArray.indexOf(n.y)
+      }
     })
 
     const links: GraphLink[] = []
