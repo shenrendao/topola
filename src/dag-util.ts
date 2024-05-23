@@ -44,8 +44,9 @@ export type GraphLink = {
 
 type SVGSelection = Selection<BaseType, {}, BaseType, {}>
 
-/** Vertical distance between boxes. */
-const V_SPACING = 30
+export const H_SPACING = 15
+export const V_SPACING = 50
+
 /** Margin around the whole drawing. */
 const MARGIN = 15
 

@@ -3,7 +3,7 @@ import { max } from 'd3-array'
 import { Chart, ChartInfo, ChartOptions, Fam, Indi } from './api'
 import { DetailedRenderer } from '.'
 import { Graph, graphStratify, sugiyama } from 'd3-dag'
-import { DagUtil, GraphLink, GraphNode, getChartInfo } from './dag-util'
+import { DagUtil, GraphLink, GraphNode, H_SPACING, V_SPACING, getChartInfo } from './dag-util'
 
 export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
   readonly util: DagUtil
@@ -141,7 +141,17 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
     // get node data with ids and sizing
     const nodeDataMap = indis.reduce((m, indi) => {
       this.getGraphNodes(indi.getId()).forEach(n => {
-        m.set(n.id, n)
+        if (n.id === indi.getId()) {
+          m.set(n.id, n)
+        } else if (m.has(n.id)) {
+          if (m.get(n.id)?.indi?.id === indi.getId()) {
+            m.get(n.id)!.indi = n.indi
+          } else if (m.get(n.id)?.spouse?.id === indi.getId()) {
+            m.get(n.id)!.spouse === n.spouse
+          }
+        } else {
+          m.set(n.id, n)
+        }
       })
       return m
     }, new Map<string, GraphNode>())
@@ -248,7 +258,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
         const { width, height } = nodeDataMap.get(n.data.id)!
         return [width, height]
       })
-      .gap([15, 30])
+      .gap([H_SPACING, V_SPACING])
     layout(graph as unknown as Graph<never, never>)
     const dagNodes = Array.from(graph.nodes())
     console.log('dagNodes ---------->', dagNodes)
@@ -271,29 +281,43 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       nodeData.generation = yArray.indexOf(n.y)
     })
 
-    const links: GraphLink[] = []
-    fams.forEach(f => {
-      f.getChildren().forEach(c => {
-        const indi = indiMap.get(c)
-        if (indi) {
-          links.push(
-            ...indi.getFamiliesAsSpouse().map(familyAsSpouse => ({
-              parentId: f.getId(),
-              childId: familyAsSpouse,
-              childIndiSpouseId: c,
-            })),
-          )
-          const node = nodeDataMap.get(indi.getId())
-          if (node) {
-            links.push({
-              parentId: f.getId(),
-              childId: node.id,
-              childIndiSpouseId: node.id,
+    const lks = fams.reduce((m, fam) => {
+      fam.getChildren().forEach(child => {
+        const indi = indiMap.get(child)!
+        indi.getFamiliesAsSpouse().map(fid => {
+          const key = `${fam.getId()}-${fid}`
+          if (!m.has(key)) {
+            const nodeData = nodeDataMap.get(fid)!
+            if (child === nodeData.indi?.id && !nodeData.indi.additionalMarriage) {
+              m.set(key, {
+                parentId: fam.getId(),
+                childId: nodeData.id,
+                childIndiSpouseId: child,
+              })
+            } else if (child === nodeData.spouse?.id && !nodeData.spouse.additionalMarriage) {
+              m.set(key, {
+                parentId: fam.getId(),
+                childId: nodeData.id,
+                childIndiSpouseId: child,
+              })
+            }
+          }
+        })
+        const nodeData = nodeDataMap.get(child)
+        if (nodeData) {
+          const key = `${fam.getId()}-${child}`
+          if (!m.has(key)) {
+            m.set(key, {
+              parentId: fam.getId(),
+              childId: nodeData.id,
+              childIndiSpouseId: child,
             })
           }
         }
       })
-    })
+      return m
+    }, new Map<string, GraphLink>())
+    const links = Array.from(lks.values())
     console.log('links -------->', links)
 
     const svg = select(this.options.svgSelector)
@@ -333,7 +357,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       return [node]
     }
     // Marriages.
-    const nodes = famIds.map(famId => {
+    const nodes = famIds.map((famId, index) => {
       const fam = this.options.data.getFam(famId)!
       const father = fam.getFather()
       const mother = fam.getMother()
@@ -352,19 +376,19 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       const node: GraphNode = {
         connectedNo: this.connectedNo++,
         id: famId,
-        indi: fam.getFather()
+        indi: father
           ? {
-              id: fam.getFather()!,
-              additionalMarriage: false,
+              id: father,
+              additionalMarriage: indiId === father ? index > 0 : undefined,
               width: fatherWidth,
               height: fatherMotherHeight,
               anchor: [0, 0],
             }
           : undefined,
-        spouse: fam.getMother()
+        spouse: mother
           ? {
-              id: fam.getMother()!,
-              additionalMarriage: false,
+              id: mother,
+              additionalMarriage: indiId === mother ? index > 0 : undefined,
               width: motherWidth,
               height: fatherMotherHeight,
               anchor: [0, 0],
@@ -372,7 +396,7 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
           : undefined,
         family: {
           id: famId,
-          additionalMarriage: false,
+          additionalMarriage: undefined,
           width: familyWidth,
           height: familyHeight,
           anchor: (this.options.renderer as DetailedRenderer).getPreferredFamSize(famId),
@@ -388,9 +412,6 @@ export class DagChart<IndiT extends Indi, FamT extends Fam> implements Chart {
       node.family && (node.family.anchor = getFamilyAnchor(node))
       return node
     })
-    // nodes.slice(1).forEach((node) => {
-    //   node.additionalMarriage = true;
-    // });
     return nodes
   }
 }
