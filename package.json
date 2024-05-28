@@ -46,6 +46,7 @@
     "watchify": "^4.0.0"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.1.2",
     "array-flat-polyfill": "^1.0.1",
     "d3-array": "^2.12.1",
     "d3-dag": "^1.1.0",
